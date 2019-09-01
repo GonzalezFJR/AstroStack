@@ -95,19 +95,19 @@ def TranslateStars(stars, centers = ''):
     shiftedStars.append([x1, y1, x2+OX, y2+OY])
   return shiftedStars
 
-def GetImgAlignment(refImg, img, maxstars = 100, testAngle = 0.0001, nSteps = 10000, verbose = 0):
+def GetImgAlignment(refImg, img, maxstars = 100, testAngle = 0.0001, nSteps = 10000, verbose = 1):
   if isinstance(img, list):
     if refImg in img:
       index = img.index(refImg)
       img.pop(index)
     nImgs = len(img)
-    outputs = []
+    outputs = {}
     i = 0
     for im in img:
       i += 1
       if verbose >= 0: print '[IMG %i / %i]'%(i, nImgs)
-      outs = GetImgAlignment(refImg, im, maxstars, testAngle, nSteps, verbose)
-      outputs.append(outs)
+      ofname, ocentr, oshift, oang, odmin  = GetImgAlignment(refImg, im, maxstars, testAngle, nSteps, verbose)
+      outputs[ofname] = [ocentr, oshift, oang, odmin]
     return outputs
   if verbose: print ' ## Matching stars in files "%s" and "%s"...'%(refImg, img)
   matchedStars = GetGoodMatchedStars(refImg, img, n = maxstars)
@@ -131,5 +131,30 @@ def GetImgAlignment(refImg, img, maxstars = 100, testAngle = 0.0001, nSteps = 10
   if verbose: print '    >> Rotating an angle of %1.5f (%1.5f dgr)'%(angmin, 180*angmin/pi)
   if verbose: print '    >> Distance after rotation: %1.2f '%dmin
   if verbose > 1: RotateStarsAndGetMeanDist(shiftedStars, CMx1, CMy1, angmin, len(shiftedStars), 1)
-  return [img, OX, OY, angmin, dmin]
+  return [img, [CMx1, CMy1], [OX, OY], angmin, dmin]
+
+def ShiftAndRotate(fname, center, shift, angle, outname = ''):
+  loadimg = LoadFitImage(path)
+  image = loadimg[0]
+  shifted = shift(image, shift)
+  padX = [shifted.shape[1] - center[0], center[0]]
+  padY = [shifted.shape[0] - center[1], center[1]]
+  imgdesp  = np.pad(shifted, [padY, padX], 'constant')
+  imgrot   = rotate(imgdesp, angle, reshape=False)
+  imgfinal = imgrot[padY[0] : -padY[1], padX[0] : -padX[1]]
+  if outname == '':
+    extension = ''
+    if   fname.endswith('.fit' ): 
+      outname = fname[:-4]
+      extension = '.fit'
+    elif fname.endswith('.fits'): 
+      outname = fname[:-5]
+      extension = '.fits'
+    outname += '_align'+extension
+  if os.path.isfile(outname):
+    os.system('mv %s %s.bak'%outname)
+  f = LoadFit(path)
+  f[0].data = imgfinal
+  f.writeto(outname,overwrite=True)
+
 

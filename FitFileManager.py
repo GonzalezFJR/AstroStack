@@ -131,7 +131,7 @@ class FitFileManager:
   def splitColors(self):
     return len(self.blue) > 0 or len(self.green) > 0 or len(self.red) > 0
 
-  def __init__(self, path, pathToDarks = '', pathToBias = '', pathToFlats = '', pathToRed = '', pathToGreen = '', pathToBlue = '', tag = ''):
+  def __init__(self, path, pathToDarks = '', pathToBias = '', pathToFlats = '', pathToRed = '', pathToGreen = '', pathToBlue = '', tag = '', verbose = False):
     self.Init(path, tag, pathToDarks, pathToFlats, pathToBias, pathToBlue, pathToRed, pathToGreen)
     self.lights = [] 
     self.darks = []
@@ -147,6 +147,8 @@ class FitFileManager:
     if pathToRed   != '': self.Read(pathToRed,   'red')
     if pathToBlue  != '': self.Read(pathToBlue,  'blue')
     if pathToGreen != '': self.Read(pathToGreen, 'green')
+    self.verbose = verbose
+    if verbose: print self
 
   def __str__(self):
     c = '[FitFileManager]\n'

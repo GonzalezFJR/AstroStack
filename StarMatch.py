@@ -20,6 +20,14 @@ from astropy.visualization import *
 #=========== Read fits and extract info
 #========================================================================
 
+def LoadFit(path):
+  if not os.path.isfile(path):
+    print 'ERROR: not found file ' + path
+    return[0]
+  hdu = astropy.io.fits.open(path)
+  return hdu
+
+
 def LoadFitImage(path, area = []):
   ''' Opens a .fit image and returns the float 2D array and the filter (read from the header) '''
   if not os.path.isfile(path): 
