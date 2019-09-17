@@ -1,6 +1,7 @@
 from math import sqrt, atan2, sin, cos, pi
 import numpy as np
 from StarMatch import *
+from scipy.ndimage.interpolation import shift, rotate
 
 def GetCentroid(Ax1, Ay1 = '', Ax2 = '', Ay2 = '', Bx1 = '', By1 = '', Bx2 = '', By2 = ''):
   if   Ay1 == '':
@@ -96,6 +97,7 @@ def TranslateStars(stars, centers = ''):
   return shiftedStars
 
 def GetImgAlignment(refImg, img, maxstars = 100, testAngle = 0.0001, nSteps = 10000, verbose = 1):
+  tout = ''
   if isinstance(img, list):
     if refImg in img:
       index = img.index(refImg)
@@ -106,37 +108,52 @@ def GetImgAlignment(refImg, img, maxstars = 100, testAngle = 0.0001, nSteps = 10
     for im in img:
       i += 1
       if verbose >= 0: print '[IMG %i / %i]'%(i, nImgs)
-      ofname, ocentr, oshift, oang, odmin  = GetImgAlignment(refImg, im, maxstars, testAngle, nSteps, verbose)
+      ofname, ocentr, oshift, oang, odmin, t = GetImgAlignment(refImg, im, maxstars, testAngle, nSteps, verbose)
       outputs[ofname] = [ocentr, oshift, oang, odmin]
     return outputs
-  if verbose: print ' ## Matching stars in files "%s" and "%s"...'%(refImg, img)
-  matchedStars = GetGoodMatchedStars(refImg, img, n = maxstars)
+  doLoad = False
+  if isinstance(refImg, str): doLoad = True
+  if verbose: print ' ## Matching stars...'# in files "%s" and "%s"...'%(refImgName, imgName)
+  tout += ' ## Matching stars...\n'# in files "%s" and "%s"...'%(refImgName, imgName) + '\n'
+  matchedStars = GetGoodMatchedStars(refImg, img, n = maxstars) if doLoad else GetGoodMatchedStarsFromImage(refImg, img, n = maxstars)
   if len(matchedStars) == 0:
-    print '0 stars -- Something went worng... skipping image %s'%img
+    print '0 stars -- Something went worng... skipping image!!'# %s'%imgName
+    tout += ' 0 stars -- Something went worng... skipping image!!'# %s'%imgName + '\n'
     return [img, 0, 0, 0, 0]
   if verbose: print '    >> Using %i stars!'%len(matchedStars)
+  tout += '    >> Using %i stars!'%len(matchedStars) + '\n'
   dOrig  = GetMeanStarsDistance(matchedStars)
   if verbose: print '    >> Img orig distance: %1.2f'%dOrig
+  tout += '    >> Img orig distance: %1.2f'%dOrig + '\n'
   if verbose: print ' ## Obtaining centroids...'
+  tout += ' ## Obtaining centroids...' + '\n'
   CMx1, CMy1, CMx2, CMy2 = GetCenters(matchedStars)
   OX = CMx1 - CMx2; OY = CMy1 - CMy2
   if verbose: print '    >> [%1.2f, %1.2f] and [%1.2f, %1.2f]... shifts: [%1.2f, %1.2f]'%(CMx1, CMy1, CMx2, CMy2, OX, OY)
+  tout += '    >> [%1.2f, %1.2f] and [%1.2f, %1.2f]... shifts: [%1.2f, %1.2f]'%(CMx1, CMy1, CMx2, CMy2, OX, OY) + '\n'
   shiftedStars = TranslateStars(matchedStars)
   dTrans = GetMeanStarsDistance(shiftedStars)
   if verbose: print '    >> Distance after translation: %1.2f '%dTrans
+  tout += '    >> Distance after translation: %1.2f '%dTrans + '\n'
   if (dOrig-dTrans)/dOrig < 0.5: 
     print 'WARNING: probably a bad translation... consider increasing the number of stars!'
+    tout += 'WARNING: probably a bad translation... consider increasing the number of stars!' + '\n'
   if verbose: print ' ## Opimazing rotation angle...'
+  tout += ' ## Opimazing rotation angle...' + '\n'
   angmin, dmin = GetOptimalRotationAngle(shiftedStars, [CMx1, CMy1], nStars = len(shiftedStars), testAngle=testAngle, nSteps=nSteps)
   if verbose: print '    >> Rotating an angle of %1.5f (%1.5f dgr)'%(angmin, 180*angmin/pi)
+  tout += '    >> Rotating an angle of %1.5f (%1.5f dgr)'%(angmin, 180*angmin/pi) + '\n'
   if verbose: print '    >> Distance after rotation: %1.2f '%dmin
-  if verbose > 1: RotateStarsAndGetMeanDist(shiftedStars, CMx1, CMy1, angmin, len(shiftedStars), 1)
-  return [img, [CMx1, CMy1], [OX, OY], angmin, dmin]
+  tout += '    >> Distance after rotation: %1.2f '%dmin + '\n'
+  #if verbose > 1: RotateStarsAndGetMeanDist(shiftedStars, CMx1, CMy1, angmin, len(shiftedStars), 1)
+  return [img, [CMx1, CMy1], [OX, OY], angmin, dmin, tout]
 
-def ShiftAndRotate(fname, center, shift, angle, outname = ''):
-  loadimg = LoadFitImage(path)
+def ShiftAndRotate(fname, center, shifts, angle, outname = '', doWrite = False):
+  loadimg = LoadFitImage(fname)
   image = loadimg[0]
-  shifted = shift(image, shift)
+  shifts = [shifts[1], shifts[0]]
+  shifted = shift(image, shifts)
+  center = [int(center[1]), int(center[0])]
   padX = [shifted.shape[1] - center[0], center[0]]
   padY = [shifted.shape[0] - center[1], center[1]]
   imgdesp  = np.pad(shifted, [padY, padX], 'constant')
@@ -152,9 +169,22 @@ def ShiftAndRotate(fname, center, shift, angle, outname = ''):
       extension = '.fits'
     outname += '_align'+extension
   if os.path.isfile(outname):
-    os.system('mv %s %s.bak'%outname)
-  f = LoadFit(path)
-  f[0].data = imgfinal
-  f.writeto(outname,overwrite=True)
+    os.system('mv %s %s.bak'%(outname, outname))
+  if doWrite:
+    f = LoadFit(fname)
+    f[0].data = imgfinal
+    f.writeto(outname,overwrite=True)
+  return imgfinal
+
+def ShiftAndRotateImage(image, center, shifts, angle):
+  shifts = [shifts[1], shifts[0]]
+  shifted = shift(image, shifts)
+  center = [int(center[1]), int(center[0])]
+  padX = [shifted.shape[1] - center[0], center[0]]
+  padY = [shifted.shape[0] - center[1], center[1]]
+  imgdesp  = np.pad(shifted, [padY, padX], 'constant')
+  imgrot   = rotate(imgdesp, angle, reshape=False)
+  imgfinal = imgrot[padY[0] : -padY[1], padX[0] : -padX[1]]
+  return imgfinal
 
 
